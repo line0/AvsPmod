@@ -275,14 +275,9 @@ class AvsClipBase:
         self.bit_depth = bit_depth
         self.bit_depth_conv = bit_depth_conv
 
-        def FunctionsExist(functions):
-            results = True
-            for function in functions:
-                result = self.env.FunctionExists(function)
-                results = results & result
-                if __debug__: print "FunctionExists({0}): {1}".format(function, result)
-            return results
-
+        def FunctionsExist(*args):
+                return all(self.env.FunctionExists(arg) for arg in args)
+            
         if isinstance(matrix, basestring):
             self.matrix = matrix
         else:
@@ -315,11 +310,11 @@ class AvsClipBase:
                     args = 'avsp_raw_clip\n'
 
                     if not is_stacked:
-                        if FunctionsExist(['SeparateColumns']):
+                        if FunctionsExist('SeparateColumns'):
                             sepColumns = 'SeparateColumns(2)\n'
                             toStacked = sepColumns + 'StackVertical (SelectOdd(), SelectEven())\n'
 
-                        elif FunctionsExist(['FTurnLeft']):
+                        elif FunctionsExist('FTurnLeft'):
                             sepColumns = 'FTurnLeft().AssumeBFF().SeparateFields().FTurnRight().AssumeFrameBased()\n'
                             toStacked = sepColumns + 'StackVertical(SelectOdd, SelectEven)\n'
 
@@ -337,27 +332,34 @@ class AvsClipBase:
                             lsb16 = lsb.mt_lut("x 6 << 255 &u", v=3, u=3)
                             StackVertical(msb16, lsb16)
                             """
+                        if not FunctionsExist('mt_lut'):
+                            if FunctionsExist('f3kdb_dither'):
+                                self.bit_depth_conv = 'dither'
+                            else: 
+                                self.bit_depth_conv = 'none'
 
                     if self.bit_depth_conv == 'hqrgb':
-                        if FunctionsExist(['dither_srgb_display', 'mt_lut']):
+                        if FunctionsExist('dither_srgb_display'):
                             if not is_stacked: args += toStacked
                             if bit_depth == 10: args += to16Bits
 
                             args += 'Dither_srgb_display(lsb_in=true, matrix="{0}", tv_range={1})'.format(matrix[0], tv_range)
 
-                        else: self.bit_depth_conv = 'dither'
+                        else: 
+                            self.bit_depth_conv = 'dither'
 
                     if self.bit_depth_conv == 'dither':
-                        if FunctionsExist(['f3kdb_dither']):
+                        if FunctionsExist('f3kdb_dither'):
                             args += 'f3kdb_dither(mode=1, stacked={0}, input_depth={1},keep_tv_range={2})'\
                                     .format(is_stacked, bit_depth, tv_range)
 
-                        elif FunctionsExist(['DitherPost','mt_lut']):
+                        elif FunctionsExist('DitherPost'):
                             if not is_stacked: args += toStacked
                             if bit_depth == 10: args += to16Bits
                             args += 'DitherPost(mode=6)'
 
-                        else: self.bit_depth_conv = 'clip'
+                        else: 
+                            self.bit_depth_conv = 'clip'
 
                     if self.bit_depth_conv == 'clip':
                         if bit_depth == 16:
@@ -367,7 +369,7 @@ class AvsClipBase:
                                 else: args +='PointResize(width/2,height,-1)\n'
                             else: args += 'Crop(0, 0, 0, -Height/2)'
 
-                        elif bit_depth == 10 and FunctionsExist(['mt_lutxy']):
+                        elif bit_depth == 10:
                             if not is_stacked: args += toStacked
                             args += """
                                 h = Height / 2
@@ -375,7 +377,8 @@ class AvsClipBase:
                                 lsb = Crop(0,h,0,0)
                                 msb.mt_lutxy(lsb, "x 6 << y 2 >> +", v=3, u=3)
                                 """
-                        else: self.bit_depth_conv = 'none'
+                        else: 
+                            self.bit_depth_conv = 'none'
 
                     avsfile = self.env.Invoke('Eval', avisynth.AVS_Value(args))
                     self.display_clip = avsfile.AsClip(self.env)
