@@ -5456,14 +5456,17 @@ class MainFrame(wxp.Frame):
         if self.options['videostatusbarinfo'] == None:
             sep = '\t\t' if os.name == 'nt' else '\\T\\T'
             self.videoStatusBarInfo = (_('Frame') + ' %F / %FC  -  (%T)  %BM      %POS  %HEX '
-                                       '{sep} %Z %Wx%H (%AR)  -  %FR ' + _('fps') + '  -  %CS').format(sep=sep)
+                                       '{sep} %Z %Wx%H (%AR)  -  %FR ' + _('fps') + '  -  %CSI (%CS) -> %BDC').format(sep=sep)
         else:
             self.videoStatusBarInfo = self.options['videostatusbarinfo']
         self.videoStatusBarInfoParsed, self.showVideoPixelInfo = self.ParseVideoStatusBarInfo(self.videoStatusBarInfo)
         self.foldAllSliders = True
         self.reuse_environment = False
         self.matrix = ['auto', 'tv']
-        self.interlaced = self.swapuv = self.bit_depth = False
+        self.csp_in = None
+        self.bit_depth_conv = 'dither'
+        self.bit_depth = 8
+        self.interlaced = self.swapuv = self.is_stacked = False
         self.flip = []
         self.titleEntry = None
         # Events
@@ -7167,6 +7170,19 @@ class MainFrame(wxp.Frame):
             _('Swap UV'): 'swapuv',
         }
         reverseMatrixDict = dict([(v,k) for k,v in self.yuv2rgbDict.items()])
+        
+        self.bitDepthDict = {
+            _('8-bit'): '8',
+            _('Stacked yuv420p10 or yuv444p10'): 's10',
+            _('Stacked yuv420p16 or yuv444p16'): 's16',
+            _('Interleaved yuv420p10 or yuv444p10'): 'i10',
+            _('Interleaved yuv420p16 or yuv444p16'): 'i16',
+            _('Interleaved RGB48'): 'rgb48',
+            _('High quality YUV to RGB conversion'): 'hqrgb',
+            _('Dither to 8-bit YUV'): 'dither',
+            _('Clip to 8-bit YUV'): 'clip',
+        }
+        
         self.zoomLabelDict = {
             _('25%'): '25',
             _('50%'): '50',
@@ -7404,7 +7420,7 @@ class MainFrame(wxp.Frame):
                     (reverseMatrixDict['Interlaced'], '', self.OnMenuVideoYUV2RGB, _('For YV12 only, assume it is interlaced'), wx.ITEM_RADIO, False),
                     ),
                 ),
-                (_('Bith &depth'),
+                (_('Bit &depth'),
                     (
                     (_('8-bit'), '', self.OnMenuVideoBitDepth, _('Regular 8-bit depth (default)'), wx.ITEM_RADIO, True),
                     (_('Stacked yuv420p10 or yuv444p10'), '', self.OnMenuVideoBitDepth, _('Stacked 16-bit, MSB on top, range reduced to 10-bit. Requires MaskTools v2 loaded'), wx.ITEM_RADIO, False),
@@ -7412,6 +7428,10 @@ class MainFrame(wxp.Frame):
                     (_('Interleaved yuv420p10 or yuv444p10'), '', self.OnMenuVideoBitDepth, _('Interleaved 16-bit (little-endian), range reduced to 10-bit. Requires MaskTools v2 loaded'), wx.ITEM_RADIO, False),
                     (_('Interleaved yuv420p16 or yuv444p16'), '', self.OnMenuVideoBitDepth, _('Interleaved 16-bit (little-endian)'), wx.ITEM_RADIO, False),
                     #(_('Interleaved RGB48'), '', self.OnMenuVideoBitDepth, _('16-bit RGB conveyed on YV12'), wx.ITEM_RADIO, False),
+                    (''),
+                    (_('High quality YUV to RGB conversion'), '', self.OnMenuVideoBitDepth, _('Convert high-bitdepth YUV to 8-bit RGB in one step. Requires Dither to be loaded.'), wx.ITEM_RADIO, False),
+                    (_('Dither to 8-bit YUV'), '', self.OnMenuVideoBitDepth, _('Dither high-bitdepth YUV to 8-bit YUV using Floyd-Steinberg error diffusion. Requires either f3kdb or Dither to be loaded.'), wx.ITEM_RADIO, True),
+                    (_('Clip to 8-bit YUV'), '', self.OnMenuVideoBitDepth, _('Only keeps the 8 MSBs and throws the rest away. Fast but very inaccurate.'), wx.ITEM_RADIO, False),
                     ),
                 ),
                 (_('Keep variables on refreshing'), '', self.OnMenuVideoReuseEnvironment, _('Create the new AviSynth clip on the same environment. Useful for tweaking parameters'), wx.ITEM_CHECK, False),
@@ -9251,23 +9271,23 @@ class MainFrame(wxp.Frame):
         vidmenus = [self.videoWindow.contextMenu, self.GetMenuBar().GetMenu(2)]
         id = event.GetId()
         for vidmenu in vidmenus:
-            menu = vidmenu.FindItemById(vidmenu.FindItem(_('Bith &depth'))).GetSubMenu()
+            menu = vidmenu.FindItemById(vidmenu.FindItem(_('Bit &depth'))).GetSubMenu()
             menuItem = menu.FindItemById(id)
             if menuItem:
                 menuItem.Check()
                 label = menuItem.GetLabel()
-                if label == _('Stacked yuv420p10 or yuv444p10'):
-                    self.bit_depth = 's10'
-                elif label == _('Stacked yuv420p16 or yuv444p16'):
-                    self.bit_depth = 's16'
-                elif label == _('Interleaved yuv420p10 or yuv444p10'):
-                    self.bit_depth = 'i10'
-                elif label == _('Interleaved yuv420p16 or yuv444p16'):
-                    self.bit_depth = 'i16'
-                elif label == _('Interleaved RGB48'):
-                    self.bit_depth = 'rgb48'
+                value = self.bitDepthDict[label]
+
+                if value in ['hqrgb', 'dither', 'clip']:
+                    self.bit_depth_conv = value
                 else:
-                    self.bit_depth = None
+                    self.is_stacked = True if value in ['s10', 's16'] else False
+                    self.bit_depth = { 'i16':16, 's16':16,'rgb48':16,
+                                       'i10':10, 's10':10,
+                                        '8': 8,
+                                     }.get(value)
+                    if not self.bit_depth_conv: self.bit_depth_conv = 'dither'
+
                 for index in xrange(self.scriptNotebook.GetPageCount()):
                     script = self.scriptNotebook.GetPage(index)
                     script.display_clip_refresh_needed = True
@@ -9410,6 +9430,7 @@ class MainFrame(wxp.Frame):
                 (_('Length:'), '%i %s (%s)' % (vi['framecount'], _('frames'), vi['totaltime'])),
                 (_('Frame rate:'), '%.03f %s (%i/%i)' % (vi['framerate'], _('fps'), vi['frameratenum'], vi['framerateden'])),
                 (_('Colorspace:'), vi['colorspace']),
+                (_('Input Colorspace:'), vi['csp_in']),
                 (_('Field or frame based:'), vi['fieldframebased']),
                 (_('Parity:'), vi['parity']),
                 ),
@@ -11155,6 +11176,8 @@ class MainFrame(wxp.Frame):
             ('%FRN', _('Framerate numerator')),
             ('%FRD', _('Framerate denominator')),
             ('%CS', _('Colorspace')),
+            ('%CSI', _('Input Colorspace')),
+            ('%BDC', _('Bit depth conversion method')),
             ('%FB', _('Field or frame based')),
             ('%P', _('Parity')),
             ('%PS', _('Parity short (BFF or TFF)')),
@@ -13631,6 +13654,11 @@ class MainFrame(wxp.Frame):
         else:
             pixelpos, pixelhex, pixelrgb, pixelrgba, pixelyuv, pixelclr = '', '', '', '', '', ''
         frameratenum, framerateden, audiorate, audiolength, audiochannels, audiobits, colorspace, parity = v.FramerateNumerator, v.FramerateDenominator, v.Audiorate, v.Audiolength, v.Audiochannels, v.Audiobits, v.Colorspace, v.GetParity
+        csp_in, bit_depth, bit_depth_conv = v.csp_in, v.bit_depth, v.bit_depth_conv
+
+        bit_depth_conv_status = {'hqrgb': _('HQ sRGB'), 'dither': _('Dither'), 'clip': _('Clip LSB'), 'none': _('RGB')} \
+                                .get(bit_depth_conv) if bit_depth > 8 else _('RGB')
+
         if v.IsFrameBased:
             fieldframebased = _('Frame Based')
         else:
@@ -13669,6 +13697,8 @@ class MainFrame(wxp.Frame):
             ('%FC', '%(framecount)i'),
             ('%TT', '%(totaltime)s'),
             ('%FR', '%(framerate).03f'),
+            ('%CSI', '%(csp_in)s'),
+            ('%BDC', '%(bit_depth_conv_status)s'),
             ('%CS', '%(colorspace)s'),
             ('%AR', '%(aspectratio)s'),
             ('%FB', '%(fieldframebased)s'),
@@ -14599,7 +14629,7 @@ class MainFrame(wxp.Frame):
                         self.getCleanText(scripttxt), filename, workdir=workdir, env=env, 
                         fitHeight=fitHeight, fitWidth=fitWidth, oldFramecount=oldFramecount, 
                         matrix=self.matrix, interlaced=self.interlaced, swapuv=self.swapuv, 
-                        bit_depth=self.bit_depth)
+                        bit_depth=self.bit_depth, is_stacked=self.is_stacked, bit_depth_conv=self.bit_depth_conv)
                     wx.EndBusyCursor()
                 if not script.AVI.initialized:
                     if prompt:
@@ -14628,8 +14658,9 @@ class MainFrame(wxp.Frame):
             oldWidth, oldHeight = script.AVI.DisplayWidth, script.AVI.DisplayHeight
             boolOldAVI = True
             wx.BeginBusyCursor()
-            ok = script.AVI.CreateDisplayClip(matrix=self.matrix, interlaced=self.interlaced, 
-                                              swapuv=self.swapuv, bit_depth=self.bit_depth)
+            ok = script.AVI.CreateDisplayClip(matrix=self.matrix, interlaced=self.interlaced,
+                                              swapuv=self.swapuv, bit_depth=self.bit_depth,
+                                              is_stacked=self.is_stacked, bit_depth_conv=self.bit_depth_conv)
             wx.EndBusyCursor()
             if ok:
                 boolNewAVI = True

@@ -43,7 +43,7 @@ class AvsClipBase:
     
     def __init__(self, script, filename='', workdir='', env=None, fitHeight=None, 
                  fitWidth=None, oldFramecount=240, display_clip=True, reorder_rgb=False, 
-                 matrix=['auto', 'tv'], interlaced=False, swapuv=False, bit_depth=None):
+                 matrix=['auto', 'tv'], interlaced=False, swapuv=False, bit_depth=None, is_stacked=None, bit_depth_conv=None):
         # Internal variables
         self.initialized = False
         self.error_message = None
@@ -216,7 +216,7 @@ class AvsClipBase:
         self.HasAudio = self.vi.HasAudio()
         
         self.interlaced = interlaced
-        if display_clip and not self.CreateDisplayClip(matrix, interlaced, swapuv, bit_depth):
+        if display_clip and not self.CreateDisplayClip(matrix, interlaced, swapuv, bit_depth, is_stacked, bit_depth_conv):
             return
         if self.IsRGB and reorder_rgb:
             self.clip = self.BGR2RGB(self.clip)
@@ -268,50 +268,21 @@ class AvsClipBase:
             return
         return True
     
-    def CreateDisplayClip(self, matrix=['auto', 'tv'], interlaced=None, swapuv=False, bit_depth=None):
+    def CreateDisplayClip(self, matrix=['auto', 'tv'], interlaced=None, swapuv=False, bit_depth=None, is_stacked=None, bit_depth_conv=None):
         self.current_frame = -1
         self.display_clip = self.clip
         self.RGB48 = False
         self.bit_depth = bit_depth
-        if bit_depth:
-            try:
-                if bit_depth == 'rgb48': # TODO
-                    if self.IsYV12:
-                        self.RGB48 = True
-                        self.DisplayWidth /= 2
-                        self.DisplayHeight /= 2
-                        return True
-                elif self.IsYV12 or self.IsYV24 or self.IsY8:
-                    if bit_depth == 's16':
-                        args = avisynth.AVS_Value([self.display_clip, 0, 0, 0, self.Height / 2])
-                        avsfile = self.env.Invoke('Crop', args)
-                        self.display_clip = avsfile.AsClip(self.env)
-                    elif bit_depth == 's10':
-                        if self.env.FunctionExists('mt_lutxy'):
-                            args = avisynth.AVS_Value(
-                            'avsp_raw_clip\n'
-                            'msb = Crop(0, 0, Width(), Height() / 2)\n'
-                            'lsb = Crop(0, Height() / 2, Width(), Height() / 2)\n'
-                            'mt_lutxy(msb, lsb, "x 8 << y + 2 >>", chroma="process")')
-                            avsfile = self.env.Invoke('Eval', args)
-                            self.display_clip = avsfile.AsClip(self.env)
-                    elif bit_depth == 'i16':
-                        args = avisynth.AVS_Value('avsp_raw_clip.AssumeBFF().TurnLeft().SeparateFields().'
-                                                  'TurnRight().AssumeFrameBased().SelectOdd()')
-                        avsfile = self.env.Invoke('Eval', args)
-                        self.display_clip = avsfile.AsClip(self.env)
-                    elif bit_depth == 'i10':
-                        if self.env.FunctionExists('mt_lutxy'):
-                            args = avisynth.AVS_Value(
-                            'avsp_raw_clip.AssumeBFF().TurnLeft().SeparateFields().TurnRight().AssumeFrameBased()\n'
-                            'mt_lutxy(SelectOdd(), SelectEven(), "x 8 << y + 2 >>", chroma="process")')
-                            avsfile = self.env.Invoke('Eval', args)
-                            self.display_clip = avsfile.AsClip(self.env)
-                    vi = self.display_clip.GetVideoInfo()
-                    self.DisplayWidth = vi.width
-                    self.DisplayHeight = vi.height
-            except avisynth.AvisynthError, err:
-                return self.CreateErrorClip(display_clip_error=True)
+        self.bit_depth_conv = bit_depth_conv
+
+        def FunctionsExist(functions):
+            results = True
+            for function in functions:
+                result = self.env.FunctionExists(function)
+                results = results & result
+                if __debug__: print "FunctionExists({0}): {1}".format(function, result)
+            return results
+
         if isinstance(matrix, basestring):
             self.matrix = matrix
         else:
@@ -322,9 +293,98 @@ class AvsClipBase:
                 else:
                     matrix[0] = '601'
             matrix[1] = 'Rec' if matrix[1] == 'tv' else 'PC.'
+            tv_range = True if matrix[1] == 'Rec' else False
             self.matrix = matrix[1] + matrix[0]
         if interlaced is not None:
             self.interlaced = interlaced
+
+        if self.IsYUV:
+            yuv_sub = {'Y8': '400', 'YV12': '420', 'YV16': '422', 'YV24': '444', 'YV411': '411', 'YUY2': '422' }.get(self.Colorspace)
+            self.csp_in = 'yuv{0}{1}{2}'.format(yuv_sub, 'p' if bit_depth <= 8 or is_stacked else 'i', bit_depth )
+        else: self.csp_in = self.Colorspace
+
+        if bit_depth > 8:
+            try:
+                if bit_depth == 'rgb48': # TODO
+                    if self.IsYV12:
+                        self.RGB48 = True
+                        self.DisplayWidth /= 2
+                        self.DisplayHeight /= 2
+                        return True
+                elif self.IsYV12 or self.IsYV24 or self.IsY8:
+                    args = 'avsp_raw_clip\n'
+
+                    if not is_stacked:
+                        if FunctionsExist(['SeparateColumns']):
+                            sepColumns = 'SeparateColumns(2)\n'
+                            toStacked = sepColumns + 'StackVertical (SelectOdd(), SelectEven())\n'
+
+                        elif FunctionsExist(['FTurnLeft']):
+                            sepColumns = 'FTurnLeft().AssumeBFF().SeparateFields().FTurnRight().AssumeFrameBased()\n'
+                            toStacked = sepColumns + 'StackVertical(SelectOdd, SelectEven)\n'
+
+                        else:
+                            sepColumns = None
+                            toStacked = 'StackVertical(PointResize(width/2,height, -1),PointResize(width/2,height))\n'
+
+
+                    if bit_depth == 10:
+                        to16Bits = """
+                            h = Height / 2
+                            msb = Crop(0,0,0,-h)
+                            lsb = Crop(0,h,0,0)
+                            msb16 = msb.mt_lutxy(lsb, "x 6 << y 2 >> +", v=3, u=3)
+                            lsb16 = lsb.mt_lut("x 6 << 255 &u", v=3, u=3)
+                            StackVertical(msb16, lsb16)
+                            """
+
+                    if self.bit_depth_conv == 'hqrgb':
+                        if FunctionsExist(['dither_srgb_display', 'mt_lut']):
+                            if not is_stacked: args += toStacked
+                            if bit_depth == 10: args += to16Bits
+
+                            args += 'Dither_srgb_display(lsb_in=true, matrix="{0}", tv_range={1})'.format(matrix[0], tv_range)
+
+                        else: self.bit_depth_conv = 'dither'
+
+                    if self.bit_depth_conv == 'dither':
+                        if FunctionsExist(['f3kdb_dither']):
+                            args += 'f3kdb_dither(mode=1, stacked={0}, input_depth={1},keep_tv_range={2})'\
+                                    .format(is_stacked, bit_depth, tv_range)
+
+                        elif FunctionsExist(['DitherPost','mt_lut']):
+                            if not is_stacked: args += toStacked
+                            if bit_depth == 10: args += to16Bits
+                            args += 'DitherPost(mode=6)'
+
+                        else: self.bit_depth_conv = 'clip'
+
+                    if self.bit_depth_conv == 'clip':
+                        if bit_depth == 16:
+                            if not is_stacked:
+                                if sepColumns is not None:
+                                    args += sepColumns + 'SelectOdd()\n'
+                                else: args +='PointResize(width/2,height,-1)\n'
+                            else: args += 'Crop(0, 0, 0, -Height/2)'
+
+                        elif bit_depth == 10 and FunctionsExist(['mt_lutxy']):
+                            if not is_stacked: args += toStacked
+                            args += """
+                                h = Height / 2
+                                msb = Crop(0,0,0,-h)
+                                lsb = Crop(0,h,0,0)
+                                msb.mt_lutxy(lsb, "x 6 << y 2 >> +", v=3, u=3)
+                                """
+                        else: self.bit_depth_conv = 'none'
+
+                    avsfile = self.env.Invoke('Eval', avisynth.AVS_Value(args))
+                    self.display_clip = avsfile.AsClip(self.env)
+                    vi = self.display_clip.GetVideoInfo()
+                    self.DisplayWidth = vi.width
+                    self.DisplayHeight = vi.height
+            except avisynth.AvisynthError, err:
+                return self.CreateErrorClip(display_clip_error=True)
+
         if swapuv and self.IsYUV and not self.IsY8:
             try:
                 arg = avisynth.AVS_Value(self.display_clip)
