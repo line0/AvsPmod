@@ -5466,6 +5466,7 @@ class MainFrame(wxp.Frame):
         self.csp_in = None
         self.bit_depth_conv = 'dither'
         self.bit_depth = 8
+        self.RGB48 = False
         self.interlaced = self.swapuv = self.is_stacked = False
         self.flip = []
         self.titleEntry = None
@@ -7427,7 +7428,7 @@ class MainFrame(wxp.Frame):
                     (_('Stacked yuv420p16 or yuv444p16'), '', self.OnMenuVideoBitDepth, _('Stacked 16-bit, MSB on top'), wx.ITEM_RADIO, False),
                     (_('Interleaved yuv420p10 or yuv444p10'), '', self.OnMenuVideoBitDepth, _('Interleaved 16-bit (little-endian), range reduced to 10-bit. Requires MaskTools v2 loaded'), wx.ITEM_RADIO, False),
                     (_('Interleaved yuv420p16 or yuv444p16'), '', self.OnMenuVideoBitDepth, _('Interleaved 16-bit (little-endian)'), wx.ITEM_RADIO, False),
-                    #(_('Interleaved RGB48'), '', self.OnMenuVideoBitDepth, _('16-bit RGB conveyed on YV12'), wx.ITEM_RADIO, False),
+                    (_('Interleaved RGB48'), '', self.OnMenuVideoBitDepth, _('16-bit RGB conveyed on YV12'), wx.ITEM_RADIO, False),
                     (''),
                     (_('High quality YUV to RGB conversion'), '', self.OnMenuVideoBitDepth, _('Convert high-bitdepth YUV to 8-bit RGB in one step. Requires Dither to be loaded.'), wx.ITEM_RADIO, False),
                     (_('Dither to 8-bit YUV'), '', self.OnMenuVideoBitDepth, _('Dither high-bitdepth YUV to 8-bit YUV using Floyd-Steinberg error diffusion. Requires either f3kdb or Dither to be loaded.'), wx.ITEM_RADIO, True),
@@ -9284,8 +9285,10 @@ class MainFrame(wxp.Frame):
                     self.is_stacked = True if value in ['s10', 's16'] else False
                     self.bit_depth = { 'i16':16, 's16':16,'rgb48':16,
                                        'i10':10, 's10':10,
-                                        '8': 8,
-                                     }.get(value)
+                                       '8': 8,
+                                     }.get(value) 
+                    self.RGB48 = True if value == 'rgb48' else False
+                        
                     if not self.bit_depth_conv: self.bit_depth_conv = 'dither'
 
                 for index in xrange(self.scriptNotebook.GetPageCount()):
@@ -13654,7 +13657,7 @@ class MainFrame(wxp.Frame):
         else:
             pixelpos, pixelhex, pixelrgb, pixelrgba, pixelyuv, pixelclr = '', '', '', '', '', ''
         frameratenum, framerateden, audiorate, audiolength, audiochannels, audiobits, colorspace, parity = v.FramerateNumerator, v.FramerateDenominator, v.Audiorate, v.Audiolength, v.Audiochannels, v.Audiobits, v.Colorspace, v.GetParity
-        csp_in, bit_depth, bit_depth_conv = v.csp_in, v.bit_depth, v.bit_depth_conv
+        csp_in, bit_depth, bit_depth_conv, RGB48 = v.csp_in, v.bit_depth, v.bit_depth_conv, v.RGB48
 
         bit_depth_conv_status = {'hqrgb': _('HQ sRGB'), 'dither': _('Dither'), 'clip': _('Clip LSB'), 'none': _('RGB')} \
                                 .get(bit_depth_conv) if bit_depth > 8 else _('RGB')
@@ -14629,7 +14632,8 @@ class MainFrame(wxp.Frame):
                         self.getCleanText(scripttxt), filename, workdir=workdir, env=env, 
                         fitHeight=fitHeight, fitWidth=fitWidth, oldFramecount=oldFramecount, 
                         matrix=self.matrix, interlaced=self.interlaced, swapuv=self.swapuv, 
-                        bit_depth=self.bit_depth, is_stacked=self.is_stacked, bit_depth_conv=self.bit_depth_conv)
+                        bit_depth=self.bit_depth, is_stacked=self.is_stacked, bit_depth_conv=self.bit_depth_conv,
+                        RGB48=self.RGB48)
                     wx.EndBusyCursor()
                 if not script.AVI.initialized:
                     if prompt:
@@ -14660,7 +14664,7 @@ class MainFrame(wxp.Frame):
             wx.BeginBusyCursor()
             ok = script.AVI.CreateDisplayClip(matrix=self.matrix, interlaced=self.interlaced,
                                               swapuv=self.swapuv, bit_depth=self.bit_depth,
-                                              is_stacked=self.is_stacked, bit_depth_conv=self.bit_depth_conv)
+                                              is_stacked=self.is_stacked, bit_depth_conv=self.bit_depth_conv, RGB48=self.RGB48)
             wx.EndBusyCursor()
             if ok:
                 boolNewAVI = True

@@ -43,7 +43,8 @@ class AvsClipBase:
     
     def __init__(self, script, filename='', workdir='', env=None, fitHeight=None, 
                  fitWidth=None, oldFramecount=240, display_clip=True, reorder_rgb=False, 
-                 matrix=['auto', 'tv'], interlaced=False, swapuv=False, bit_depth=None, is_stacked=None, bit_depth_conv=None):
+                 matrix=['auto', 'tv'], interlaced=False, swapuv=False, bit_depth=None, is_stacked=None,
+                 bit_depth_conv=None, RGB48=False):
         # Internal variables
         self.initialized = False
         self.error_message = None
@@ -216,7 +217,7 @@ class AvsClipBase:
         self.HasAudio = self.vi.HasAudio()
         
         self.interlaced = interlaced
-        if display_clip and not self.CreateDisplayClip(matrix, interlaced, swapuv, bit_depth, is_stacked, bit_depth_conv):
+        if display_clip and not self.CreateDisplayClip(matrix, interlaced, swapuv, bit_depth, is_stacked, bit_depth_conv, RGB48):
             return
         if self.IsRGB and reorder_rgb:
             self.clip = self.BGR2RGB(self.clip)
@@ -268,10 +269,10 @@ class AvsClipBase:
             return
         return True
     
-    def CreateDisplayClip(self, matrix=['auto', 'tv'], interlaced=None, swapuv=False, bit_depth=None, is_stacked=None, bit_depth_conv=None):
+    def CreateDisplayClip(self, matrix=['auto', 'tv'], interlaced=None, swapuv=False, bit_depth=None, is_stacked=None, bit_depth_conv=None, RGB48=False):
         self.current_frame = -1
         self.display_clip = self.clip
-        self.RGB48 = False
+        self.RGB48 = RGB48
         self.bit_depth = bit_depth
         self.bit_depth_conv = bit_depth_conv
 
@@ -293,22 +294,102 @@ class AvsClipBase:
         if interlaced is not None:
             self.interlaced = interlaced
 
-        if self.IsYUV:
+        if self.RGB48:
+            self.csp_in = 'rgb48'
+        elif self.IsYUV:
             yuv_sub = {'Y8': '400', 'YV12': '420', 'YV16': '422', 'YV24': '444', 'YV411': '411', 'YUY2': '422' }.get(self.Colorspace)
             self.csp_in = 'yuv{0}{1}{2}{3}'.format(yuv_sub, 'i' if yuv_sub == 'YUY2' else 'p', bit_depth, 's' if is_stacked else '' )
         else: self.csp_in = self.Colorspace
 
         if bit_depth > 8:
             try:
-                if bit_depth == 'rgb48': # TODO
-                    if self.IsYV12:
-                        self.RGB48 = True
-                        self.DisplayWidth /= 2
-                        self.DisplayHeight /= 2
-                        return True
-                elif self.IsYV12 or self.IsYV24 or self.IsY8:
-                    args = 'avsp_raw_clip\n'
+                args = 'avsp_raw_clip\n'
+                
+                if self.RGB48 == True and (self.IsYV12 or self.IsY8):
+                    if FunctionsExist('SeparateColumns'):
+                        args += """
+                        w = Width
+                        h = Height
+                        y = last.ConvertToY8()
+                        
+                        StackVertical(UtoY, VtoY).SeparateFields().ConvertToY8()
+                        StackVertical(y,StackHorizontal(SelectEven(),SelectOdd()))
+                        
+                        m = PointResize(w, h*2).SeparateFields()
+                        m0 = m.SelectOdd().AssumeFrameBased().SeparateFields()
+                        m1 = m.SelectEven().AssumeFrameBased().SeparateFields()
+                        
+                        a = m0.SelectOdd()
+                        c = m0.SelectEven()
+                        b = m1.SelectEven()
+                        StackHorizontal(a,b,c)
+                        
+                        SeparateColumns(2)
+                        StackVertical(SelectOdd(),SelectEven())
+                        
+                        m = PointResize(w*2,h).AssumeFrameBased().SeparateColumns(2)
+                        m0 = m.SelectOdd().AssumeFrameBased().SeparateColumns(2)
+                        m1 = m.SelectEven().AssumeFrameBased().SeparateColumns(2)
+                        
+                        r = m0.SelectEven()
+                        b = m0.SelectOdd()
+                        g = m1.SelectOdd()
+                        """
+                    else:
+                        args += """
+                        w = Width
+                        h = Height
+                        y = last
+                        
+                        StackVertical(UtoY, VtoY).SeparateFields()
+                        StackVertical(y,StackHorizontal(SelectEven(),SelectOdd()))
+                        
+                        m = PointResize(w, h*2).SeparateFields()
+                        m0 = m.SelectOdd().AssumeFrameBased().SeparateFields()
+                        m1 = m.SelectEven().AssumeFrameBased().SeparateFields()
+                        
+                        a = m0.SelectOdd()
+                        c = m0.SelectEven()
+                        b = m1.SelectEven()
+                        
+                        StackHorizontal(a,b,c)
+                        
+                        {0}TurnRight().AssumeFrameBased().SeparateFields()
+                        StackHorizontal(SelectOdd(),SelectEven())
+                        
+                        m = PointResize(h,w*2).AssumeFrameBased().SeparateFields()
+                        m0 = m.SelectEven().AssumeFrameBased().SeparateFields().{0}TurnLeft()
+                        m1 = m.SelectOdd().AssumeFrameBased().SeparateFields().{0}TurnLeft()
+                        
+                        r = m0.SelectOdd()
+                        b = m0.SelectEven()
+                        g = m1.SelectEven()
+                        """.format('F' if FunctionsExist('FTurnLeft') else '' )
+                        
+                    if self.bit_depth_conv == 'hqrgb':
+                        self.bit_depth_conv = 'dither'                          
+                    
+                    if self.bit_depth_conv == 'dither':
+                        if FunctionsExist('f3kdb_dither'):
+                            args += """
+                            Interleave(r,g,b)
+                            AssumeFrameBased()
+                            f3kdb_dither(mode=1, stacked=true, input_depth=16, keep_tv_range=false)
+                            MergeRGB(SelectEvery(3, 0), SelectEvery(3, 1), SelectEvery(3, 2))  
+                            """
+                        elif FunctionsExist('DitherPost'):
+                            args += """
+                            Interleave(r,g,b).DitherPost(mode=6, u=1, v=1)
+                            MergeRGB(SelectEvery(3,0), SelectEvery(3,1), SelectEvery(3,2))
+                            """
+                        else:
+                            self.bit_depth_conv = 'clip'
+                            
+                    elif self.bit_depth_conv == 'clip':
+                        args += 'MergeRGB(r,g,b).Crop(0,0,0,-h/2)'
 
+
+                elif self.IsYV12 or self.IsYV24 or self.IsY8:
                     if not is_stacked:
                         if FunctionsExist('SeparateColumns'):
                             sepColumns = 'SeparateColumns(2)\n'
@@ -379,12 +460,12 @@ class AvsClipBase:
                                 """
                         else: 
                             self.bit_depth_conv = 'none'
-
-                    avsfile = self.env.Invoke('Eval', avisynth.AVS_Value(args))
-                    self.display_clip = avsfile.AsClip(self.env)
-                    vi = self.display_clip.GetVideoInfo()
-                    self.DisplayWidth = vi.width
-                    self.DisplayHeight = vi.height
+                            
+                avsfile = self.env.Invoke('Eval', avisynth.AVS_Value(args))
+                self.display_clip = avsfile.AsClip(self.env)
+                vi = self.display_clip.GetVideoInfo()
+                self.DisplayWidth = vi.width
+                self.DisplayHeight = vi.height
             except avisynth.AvisynthError, err:
                 return self.CreateErrorClip(display_clip_error=True)
 
