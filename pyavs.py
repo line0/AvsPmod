@@ -295,7 +295,7 @@ class AvsClipBase:
 
         if self.IsYUV:
             yuv_sub = {'Y8': '400', 'YV12': '420', 'YV16': '422', 'YV24': '444', 'YV411': '411', 'YUY2': '422' }.get(self.Colorspace)
-            self.csp_in = 'yuv{0}{1}{2}'.format(yuv_sub, 'p' if bit_depth <= 8 or is_stacked else 'i', bit_depth )
+            self.csp_in = 'yuv{0}{1}{2}{3}'.format(yuv_sub, 'i' if yuv_sub == 'YUY2' else 'p', bit_depth, 's' if is_stacked else '' )
         else: self.csp_in = self.Colorspace
 
         if bit_depth > 8:
