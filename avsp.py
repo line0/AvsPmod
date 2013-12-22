@@ -251,16 +251,13 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
         self.SetMarginMask(2, stc.STC_MASK_FOLDERS)
         self.SetMarginSensitive(2, True)        
         self.SetMarginWidth(2, 13)
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDEROPEN,    stc.STC_MARK_MINUS, "white", "black")
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDER,        stc.STC_MARK_PLUS,  "white", "black")
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDERSUB,     stc.STC_MARK_EMPTY, "white", "black")
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDERTAIL,    stc.STC_MARK_EMPTY, "white", "black")
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDEREND,     stc.STC_MARK_EMPTY, "white", "black")
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDEROPENMID, stc.STC_MARK_EMPTY, "white", "black")
-        self.MarkerDefine(stc.STC_MARKNUM_FOLDERMIDTAIL, stc.STC_MARK_EMPTY, "white", "black")
-        #~ self.SetMarginWidth(2, 0)
-        if self.app.options['numlinechars']:
-            self.fitNumberMarginWidth()
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDEROPEN,    stc.STC_MARK_MINUS)
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDER,        stc.STC_MARK_PLUS)
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDERSUB,     stc.STC_MARK_EMPTY)
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDERTAIL,    stc.STC_MARK_EMPTY)
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDEREND,     stc.STC_MARK_EMPTY)
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDEROPENMID, stc.STC_MARK_EMPTY)
+        self.MarkerDefine(stc.STC_MARKNUM_FOLDERMIDTAIL, stc.STC_MARK_EMPTY)
         self.SetSavePoint()
         # Event handling
         self.Bind(stc.EVT_STC_UPDATEUI, self.OnUpdateUI)
@@ -483,7 +480,7 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
     def ParseFunctions(self, text=None, refresh_highlighting=False):
         if text is None:
             text = self.GetText()
-        filterInfo = self.app.ParseAvisynthScript(script_text=text, quiet=True)
+        filterInfo = self.app.ParseAvisynthScript(script_text=text, quiet=True) or []
         self.avsfilterdict.clear()
         self.avsfilterdict.update(dict(
             [
@@ -544,13 +541,39 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
                 if elem.startswith('back:'):
                     self.CallTipSetBackground(elem.split(':')[1].strip())
         self.SetCaretForeground(textstyles['cursor'].split(':')[1])
-        #~ self.SetSelForeground(True, '#00FF00')
-        self.SetSelBackground(True, textstyles['highlight'].split(':')[1])
-        clr = textstyles['foldmargin'].split(':')[1]
-        self.SetFoldMarginColour(True, clr)
-        self.SetFoldMarginHiColour(True, clr)
-        
-
+        for elem in textstyles['highlight'].split(','):
+            if elem.startswith('fore:'):
+                if self.app.options['highlight_fore']:
+                    self.SetSelForeground(True, elem.split(':')[1].strip())
+                else:
+                    self.SetSelForeground(False, wx.WHITE)
+            elif elem.startswith('back:'):
+                self.SetSelBackground(True, elem.split(':')[1].strip())
+        fore = back = None
+        for elem in textstyles['foldmargin'].split(','):
+            if elem.startswith('fore:'):
+                fore = elem.split(':')[1].strip()
+            elif elem.startswith('back:'):
+                back = elem.split(':')[1].strip()
+                self.SetFoldMarginColour(True, back)
+                self.SetFoldMarginHiColour(True, back)
+        fore = fore or 'white'
+        back = back or 'black'
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDEROPEN, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDEROPEN, back)
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDER, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDER, back)
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDERSUB, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDERSUB, back)
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDERTAIL, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDERTAIL, back)
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDEREND, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDEREND, back)
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDEROPENMID, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDEROPENMID, back)
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDERMIDTAIL, fore)
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDERMIDTAIL, back)
+    
     def setStylesNoColor(self):
         # unfold and remove fold points if script is already existing
         for lineNum in range(self.GetLineCount()):
@@ -571,6 +594,22 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
         #~ s_string = {'font': 'Times New Roman', 'size': mainsize, 'color': '#7F007F'}
         #~ s_filter = {'font': mainfont, 'size': mainsize, 'color': '#00007F'}
         #~ s_function = {'font': mainfont, 'size': mainsize, 'color': '#0000AA'}
+
+        # Set markers
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDEROPEN, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDEROPEN, 'black')
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDER, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDER, 'black')
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDERSUB, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDERSUB, 'black')
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDERTAIL, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDERTAIL, 'black')
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDEREND, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDEREND, 'black')
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDEROPENMID, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDEROPENMID, 'black')
+        self.MarkerSetForeground(stc.STC_MARKNUM_FOLDERMIDTAIL, 'white')
+        self.MarkerSetBackground(stc.STC_MARKNUM_FOLDERMIDTAIL, 'black')
 
         # Global default styles for all languages
         default = 'font:Arial, size:10, fore:#000000, back:#FFFFFF'
@@ -1044,12 +1083,13 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
             return ['true', 'false']
         elif arg_type in ('int', 'string'):
             if arg_type == 'string' and arg_info.startswith('"'):
-                arg_info = arg_info[arg_info[1:].index('"'):]
-            split_info = arg_info.split(' ', 1)
-            if len(split_info) == 1:
+                arg_info = arg_info[arg_info[1:].index('"') + 2:]
+            start = arg_info.find('(')
+            if start == -1:
                 return
+            arg_info = arg_info[start + 1:]
             value_list = [value.strip() for value in 
-                          split_info[1].strip(' ()').split('/')]
+                          arg_info.strip(' )').split('/')]
             if len(value_list) > 1:
                 return value_list
     
@@ -2018,7 +2058,7 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
             self.BeginUndoAction()
             event.Skip()
             def post_autocomplete(arg_name):
-                # add a plus sign
+                # add an equals sign
                 pos = self.GetCurrentPos()
                 if unichr(self.GetCharAt(pos)) == '=':
                     self.GotoPos(pos + 1)
@@ -2033,7 +2073,7 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
             # AutoCompSetDropRestOfWord doesn't include quotes
             pos = self.GetCurrentPos()
             self.SetTargetStart(pos)
-            while unichr(self.GetCharAt(pos)) == ' ' or self.IsString(pos):
+            while unichr(self.GetCharAt(pos)) in (' ', '?') or self.IsString(pos):
                 pos += 1
             self.SetTargetEnd(pos)
             self.BeginUndoAction()
@@ -2445,11 +2485,12 @@ class AvsStyledTextCtrl(stc.StyledTextCtrl):
 # Dialog for choosing AviSynth specific fonts and colors
 class AvsStyleDialog(wx.Dialog):
     # TODO: add export and import styles, macros to import...
-    def __init__(self, parent, dlgInfo, options, defaults, extra, title=_('AviSynth fonts and colors')):
+    def __init__(self, parent, dlgInfo, options, defaults, colour_data=None, extra=None, title=_('AviSynth fonts and colors')):
         wx.Dialog.__init__(self, parent, wx.ID_ANY, title)
         self.dlgInfo = dlgInfo
         self.options = options.copy()
         self.defaults = defaults
+        self.colour_data = colour_data
         # Create the font buttons
         self.controls = {}
         self.controls2 = {}
@@ -2499,7 +2540,7 @@ class AvsStyleDialog(wx.Dialog):
                     #~ foreButton.SetBackgroundColour(wx.Colour(*fontFore))
                     #~ foreButton.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
                     #~ foreButton.Bind(wx.EVT_LEFT_UP, self.OnButtonColor)
-                    foreButton = colourselect.ColourSelect(tabPanel, wx.ID_ANY, colour=wx.Colour(*fontFore), size=(50,23))
+                    foreButton = wxp.ColourSelect(tabPanel, wx.ID_ANY, colour=wx.Colour(*fontFore), size=(50,23), colour_data=self.colour_data)
                 else:
                     foreButton = None
                 if fontBack is not None:
@@ -2507,7 +2548,7 @@ class AvsStyleDialog(wx.Dialog):
                     #~ backButton.SetBackgroundColour(wx.Colour(*fontBack))
                     #~ backButton.SetCursor(wx.StockCursor(wx.CURSOR_HAND))
                     #~ backButton.Bind(wx.EVT_LEFT_UP, self.OnButtonColor)
-                    backButton = colourselect.ColourSelect(tabPanel, wx.ID_ANY, colour=wx.Colour(*fontBack), size=(50,23))
+                    backButton = wxp.ColourSelect(tabPanel, wx.ID_ANY, colour=wx.Colour(*fontBack), size=(50,23), colour_data=self.colour_data)
                 else:
                     backButton = None
                 sizer.Add(staticText, flag=wx.ALIGN_CENTER)
@@ -2528,21 +2569,28 @@ class AvsStyleDialog(wx.Dialog):
             tabSizer.Add(sizer, 0, wx.ALL, 10)
             tabPanel.SetSizerAndFit(tabSizer)
         self.notebook.SetSelection(0)
-        # Miscellaneous options
-        label, optKey, tip = extra
-        checkbox = wx.CheckBox(self, wx.ID_ANY, label)
-        checkbox.SetValue(parent.options[optKey])
-        checkbox.SetToolTipString(tip)
-        self.controls2[optKey] = checkbox
-        # Standard buttons
-        reset  = wx.Button(self, wx.ID_NO, _('Reset'))
-        self.Bind(wx.EVT_BUTTON, self.OnButtonReset, reset)
+        # Standard (and not standard) buttons
+        themes = [_('Select a predefined theme')] + parent.defaulttextstylesDict.keys()
+        theme_choice = wx.Choice(self, choices=themes)
+        theme_choice.SetSelection(0)
+        self.Bind(wx.EVT_CHOICE, self.OnSelectTheme, theme_choice)
+        only_colors_checkbox = wx.CheckBox(self, wx.ID_ANY, _('Only change colours'))
+        only_colors_checkbox.SetValue(parent.options['theme_set_only_colors'])
+        only_colors_checkbox.SetToolTipString(_("When selecting a theme, don't change current fonts"))
+        self.controls2['theme_set_only_colors'] = only_colors_checkbox
         okay  = wx.Button(self, wx.ID_OK, _('OK'))
         self.Bind(wx.EVT_BUTTON, self.OnButtonOK, okay)
         cancel = wx.Button(self, wx.ID_CANCEL, _('Cancel'))
         btns = wx.StdDialogButtonSizer()
-        btns.Add(checkbox)
-        btns.AddButton(reset)
+        if extra: # single CheckBox
+            label, optKey, tip = extra
+            checkbox = wx.CheckBox(self, wx.ID_ANY, label)
+            checkbox.SetValue(parent.options[optKey])
+            checkbox.SetToolTipString(tip)
+            self.controls2[optKey] = checkbox
+            btns.Add(checkbox, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 3)
+        btns.Add(theme_choice, 0, wx.LEFT | wx.RIGHT, 3)
+        btns.Add(only_colors_checkbox, 0, wx.LEFT | wx.RIGHT | wx.ALIGN_CENTER_VERTICAL, 3)
         btns.AddButton(okay)
         btns.AddButton(cancel)
         btns.Realize()
@@ -2591,13 +2639,19 @@ class AvsStyleDialog(wx.Dialog):
         return (fontSize, fontStyle, fontWeight, fontUnderline,
                 fontFace, fontFore, fontBack)
     
-    def OnButtonReset(self, event):
+    def OnSelectTheme(self, event):
+        theme = event.GetEventObject().GetStringSelection()
+        if theme != _('Select a predefined theme'):
+            return self.SetTheme(theme, only_colors=
+                            self.controls2['theme_set_only_colors'].GetValue())
+    
+    def SetTheme(self, theme, only_colors=False):
         for tabLabel, tabInfo in self.dlgInfo:
             for label, key in tabInfo:
                 fontButton, foreButton, backButton = self.controls[key]
                 (fontSize, fontStyle, fontWeight, fontUnderline,
-                fontFace, fontFore, fontBack) = self.ParseStyleInfo(self.defaults[key].split(','))
-                if fontButton is not None and fontFace is not None:
+                fontFace, fontFore, fontBack) = self.ParseStyleInfo(self.defaults[theme][key].split(','))
+                if not only_colors and fontButton is not None and fontFace is not None:
                     font = wx.Font(fontSize, wx.FONTFAMILY_DEFAULT, fontStyle, 
                                    fontWeight, fontUnderline, faceName=fontFace)
                     fontButton.SetLabel('%s, %d' % (fontFace, fontSize))
@@ -2904,6 +2958,7 @@ class ScrapWindow(wx.Dialog):
         self.parent = parent
         # Create the stc control
         self.textCtrl = self.createTextCtrl()        
+        self.Style()        
         self.textCtrl.nInserted = 0
         # Define keyboard shortcuts
         #~ self.BindShortcuts()
@@ -2935,11 +2990,6 @@ class ScrapWindow(wx.Dialog):
 
     def createTextCtrl(self):
         textCtrl = stc.StyledTextCtrl(self, wx.ID_ANY, size=(250,250), style=wx.SIMPLE_BORDER)
-        # Define the default style
-        textCtrl.StyleSetSpec(stc.STC_STYLE_DEFAULT, self.parent.options['textstyles']['scrapwindow'])
-        textCtrl.StyleClearAll()
-        # Set a style to use for text flashing upon insertion
-        textCtrl.StyleSetSpec(stc.STC_P_WORD, "fore:#FF0000,bold")
         # Define the context menu
         textCtrl.UsePopUp(0)
         self.idInsertFrame = wx.NewId()
@@ -2980,6 +3030,24 @@ class ScrapWindow(wx.Dialog):
         textCtrl.SetEOLMode(stc.STC_EOL_LF)
         return textCtrl
 
+    def Style(self):
+        textstyles = self.parent.options['textstyles']
+        # Define the default style
+        self.textCtrl.StyleSetSpec(stc.STC_STYLE_DEFAULT, textstyles['scrapwindow'])
+        self.textCtrl.StyleClearAll()
+        # Set a style to use for text flashing upon insertion
+        self.textCtrl.StyleSetSpec(stc.STC_P_WORD, "fore:#FF0000,bold")
+        # Set a style for selected text
+        self.textCtrl.SetCaretForeground(textstyles['cursor'].split(':')[1])
+        for elem in textstyles['highlight'].split(','):
+            if elem.startswith('fore:'):
+                if self.parent.options['highlight_fore']:
+                    self.textCtrl.SetSelForeground(True, elem.split(':')[1].strip())
+                else:
+                    self.textCtrl.SetSelForeground(False, wx.WHITE)
+            elif elem.startswith('back:'):
+                self.textCtrl.SetSelBackground(True, elem.split(':')[1].strip())
+    
     def BindShortcuts(self):
         menuInfo = (
             (_('Insert frame #'), self.idInsertFrame),
@@ -5225,6 +5293,7 @@ class MainFrame(wxp.Frame):
             finally:
                 sys.dont_write_bytecode = False
         
+        self.colour_data = wxp.ColourData() # needed before the following
         self.optionsDlgInfo = self.getOptionsDlgInfo()
         
         # single-instance socket
@@ -5470,6 +5539,7 @@ class MainFrame(wxp.Frame):
         self.interlaced = self.swapuv = self.is_stacked = False
         self.flip = []
         self.titleEntry = None
+        self.colour_data.FromString(self.options['colourdata'])
         # Events
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         self.Bind(wx.EVT_NOTEBOOK_PAGE_CHANGED, self.OnNotebookPageChanged)
@@ -5596,6 +5666,8 @@ class MainFrame(wxp.Frame):
         menuItem = menu.FindItemByPosition(self.options['zoomindex'])
         if menuItem is not None:
             self.OnMenuVideoZoom(None, menuItem=menuItem, show=False)
+        if self.options['use_customvideobackground']:
+            self.OnMenuVideoBackgroundColor(color=self.options['videobackground'])
         if self.need_to_show_preview:
             #~ self.ShowVideoFrame(self.startupframe, forceRefresh=False)
             self.IdleCall.append((self.ShowVideoFrame, (self.startupframe,), {'forceRefresh':False}))
@@ -5710,44 +5782,209 @@ class MainFrame(wxp.Frame):
             }
         snippetsDict = {
         }
+        index = os.name == 'nt'
+        sans = ('sans', 'Verdana')[index]
+        sans2 = ('sans', 'Arial')[index]
+        serif = ('serif', 'Georgia')[index]
+        serif2 = ('serif', 'Times New Roman')[index]
+        mono = ('monospace', 'Courier New')[index]
+        mono2 = ('monospace', 'Fixedsys')[index]
+        other = ('sans', 'Comic Sans MS')[index]
         rgb = tuple(map(lambda x: (x+255)/2, 
                        wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DFACE).Get()))
+        solarized_base03 = '#002b36'
+        solarized_base02 = '#073642'
+        solarized_base01 = '#586e75'
+        solarized_base00 = '#657b83'
+        solarized_base0 = '#839496'
+        solarized_base1 = '#93a1a1'
+        solarized_base2 = '#eee8d5'
+        solarized_base3 = '#fdf6e3'
+        solarized_yellow = '#b58900'
+        solarized_orange = '#cb4b16'
+        solarized_red = '#dc322f'
+        solarized_magenta = '#d33682'
+        solarized_violet = '#6c71c4'
+        solarized_blue = '#268bd2'
+        solarized_cyan = '#2aa198'
+        solarized_green = '#859900'
+        solarized_base021 = '#c1c5bb' # added
+        solarized_base21 = '#2f525b' # added
+        zenburn_normal_fore = '#dcdccc'
+        zenburn_normal_back = '#3f3f3f'
+        zenburn_low_fore = '#a0a094' # added
+        zenburn_comment = '#7f9f7f'
+        zenburn_string = '#cc9393'
+        zenburn_stringeol_fore = '#ecbcbc'
+        zenburn_stringeol_back = '#41363c'
+        zenburn_number = '#8cd0d3'
+        zenburn_operator = '#f0efd0'
+        zenburn_clipproperty = '#9fafaf'
+        zenburn_internalfunction = '#c0bed1'
+        zenburn_internalfilter = '#6c6c9c'
+        zenburn_externalfilter = '#bc6c9c'
+        zenburn_userdefined = '#efef8f'
+        zenburn_datatype = '#dfdfbf'
+        zenburn_keyword = '#f0dfaf'
+        zenburn_define = '#ffcfaf'
+        zenburn_bad = '#e89393'
+        zenburn_cursor_fore = '#000d18'
+        zenburn_cursor_back = '#8faf9f'
+        zenburn_select_back = '#2f2f2f'
+        zenburn_linenumber_fore = '#9fafaf'
+        zenburn_linenumber_back = '#262626'
+        zenburn_currentline_back = '#434443'
+        zenburn_fold_fore = '#93b3a3'
+        zenburn_fold_back = '#333333'
+        locals_dict = locals()
         self.defaulttextstylesDict = {
-            'default': 'face:Verdana,size:10,fore:#000000,back:#FFFFFF',
-            'comment': 'face:Comic Sans MS,size:9,fore:#007F00,back:#FFFFFF',
-            'number': 'face:Verdana,size:10,fore:#007F7F,back:#FFFFFF',
-            'operator': 'face:Verdana,size:10,fore:#000000,back:#FFFFFF,bold',
-            'string': 'face:Courier New,size:10,fore:#7F007F,back:#FFFFFF',
-            'stringtriple': 'face:Courier New,size:10,fore:#7F0000,back:#FFFFFF',
-            'stringeol': 'face:Courier New,size:10,fore:#000000,back:#E0C0E0',
-            'assignment': 'face:Verdana,size:10,fore:#000000,back:#FFFFFF,bold',
-            'internalfilter': 'face:Verdana,size:10,fore:#00007F,back:#FFFFFF,bold',
-            'externalfilter': 'face:Verdana,size:10,fore:#0080C0,back:#FFFFFF,bold',
-            'clipproperty': 'face:Verdana,size:10,fore:#00007F,back:#FFFFFF',
-            'userdefined': 'face:Verdana,size:10,fore:#8000FF,back:#FFFFFF,bold',
-            'unknownfunction': 'face:Verdana,size:10,fore:#E10000,back:#FFFFFF',
-            'parameter': 'face:Verdana,size:10,fore:#555555,back:#FFFFFF',
-            'userslider': 'face:Arial,size:10,fore:#00007F,back:#FFFFFF',
-            'monospaced': 'face:Courier New,size:10',
-            'internalfunction': 'face:Verdana,size:10,fore:#007F7F,back:#FFFFFF',
-            'keyword': 'face:Verdana,size:10,fore:#400080,back:#FFFFFF,bold',
-            'miscword': 'face:Verdana,size:10,fore:#00007F,back:#FFFFFF,bold',
-            'calltip': 'fore:#808080,back:#FFFFFF',
-            'calltiphighlight': 'fore:#000000',
-            'bracelight': 'face:Verdana,size:10,fore:#0000FF,back:#FFFFFF,bold',
-            'badbrace': 'face:Verdana,size:10,fore:#FF0000,back:#FFFFFF,bold',
-            'badnumber': 'face:Verdana,size:10,fore:#FF0000,back:#FFFFFF',
-            'linenumber': 'face:Verdana,fore:#555555,back:#C0C0C0',
-            'datatype': 'face:Verdana,size:10,fore:#0000FF,back:#FFFFFF',
-            'cursor': 'fore:#000000',
-            'highlight': 'back:#C0C0C0',                
-            'highlightline': 'back:#E8E8FF',
-            'scrapwindow': 'face:Comic Sans MS,size:10,fore:#0000AA,back:#F5EF90',
-            'endcomment': 'face:Verdana,size:10,fore:#C0C0C0,back:#FFFFFF',
-            'blockcomment': 'face:Comic Sans MS,size:9,fore:#007F00,back:#FFFFFF',
-            'foldmargin': 'back:#%02X%02X%02X' % rgb,
+            _('Default'): {
+                'monospaced': 'face:{mono},size:10',
+                'default': 'face:{sans},size:10,fore:#000000,back:#FFFFFF',
+                'comment': 'face:{serif},size:9,fore:#007F00,back:#FFFFFF',
+                'blockcomment': 'face:{serif},size:9,fore:#007F00,back:#FFFFFF',
+                'endcomment': 'face:{sans},size:10,fore:#C0C0C0,back:#FFFFFF',
+                'number': 'face:{mono},size:10,fore:#007F7F,back:#FFFFFF',
+                'badnumber': 'face:{mono},size:10,fore:#FF0000,back:#FFFFFF',
+                'string': 'face:{mono},size:10,fore:#7F007F,back:#FFFFFF',
+                'stringtriple': 'face:{mono},size:10,fore:#7F0000,back:#FFFFFF',
+                'stringeol': 'face:{mono},size:10,fore:#000000,back:#E0C0E0',
+                'operator': 'face:{sans},size:10,fore:#000000,back:#FFFFFF,bold',
+                'assignment': 'face:{sans},size:10,fore:#000000,back:#FFFFFF,bold',
+                'clipproperty': 'face:{sans},size:10,fore:#00007F,back:#FFFFFF,bold',
+                'internalfunction': 'face:{sans},size:10,fore:#007F7F,back:#FFFFFF,bold',
+                'internalfilter': 'face:{sans},size:10,fore:#00007F,back:#FFFFFF,bold',
+                'externalfilter': 'face:{sans},size:10,fore:#0080C0,back:#FFFFFF,bold',
+                'userdefined': 'face:{sans},size:10,fore:#8000FF,back:#FFFFFF,bold',
+                'unknownfunction': 'face:{sans},size:10,fore:#E10000,back:#FFFFFF,bold',
+                'parameter': 'face:{sans},size:10,fore:#555555,back:#FFFFFF',
+                'datatype': 'face:{sans},size:10,fore:#0000FF,back:#FFFFFF',
+                'calltip': 'fore:#808080,back:#FFFFFF',
+                'calltiphighlight': 'fore:#000000',
+                'keyword': 'face:{sans},size:10,fore:#400080,back:#FFFFFF,bold',
+                'miscword': 'face:{sans},size:10,fore:#00007F,back:#FFFFFF,bold',
+                'userslider': 'face:{sans},size:10,fore:#00007F,back:#FFFFFF',
+                'cursor': 'fore:#000000',
+                'bracelight': 'face:{sans},size:10,fore:#0000FF,back:#FFFFFF,bold',
+                'badbrace': 'face:{sans},size:10,fore:#FF0000,back:#FFFFFF,bold',
+                'highlight': 'fore:#000000,back:#C0C0C0',                
+                'highlightline': 'back:#E8E8FF',
+                'linenumber': 'face:{mono},fore:#555555,back:#C0C0C0',
+                'foldmargin': 'fore:#555555,back:#%02X%02X%02X' % rgb,
+                'scrapwindow': 'face:{mono},size:10,fore:#0000AA,back:#F5EF90',
+            },
+            # Based, with some minor changes, on Solarized <http://ethanschoonover.com/solarized>
+            _('Solarized light'): {
+                'monospaced': 'face:{mono},size:10',
+                'default': 'face:{sans},size:10,fore:{solarized_base00},back:{solarized_base3}',
+                'comment': 'face:{serif},size:9,fore:{solarized_base1},back:{solarized_base3}',
+                'blockcomment': 'face:{serif},size:9,fore:{solarized_base1},back:{solarized_base3}',
+                'endcomment': 'face:{sans},size:10,fore:{solarized_base1},back:{solarized_base3}',
+                'number': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base3}',
+                'badnumber': 'face:{mono},size:10,fore:{solarized_red},back:{solarized_base3}',
+                'string': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base3}',
+                'stringtriple': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base3}',
+                'stringeol': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base2}',
+                'operator': 'face:{sans},size:10,fore:{solarized_base00},back:{solarized_base3},bold',
+                'assignment': 'face:{sans},size:10,fore:{solarized_base00},back:{solarized_base3},bold',
+                'clipproperty': 'face:{sans},size:10,fore:{solarized_blue},back:{solarized_base3},bold',
+                'internalfunction': 'face:{sans},size:10,fore:{solarized_blue},back:{solarized_base3},bold',
+                'internalfilter': 'face:{sans},size:10,fore:{solarized_violet},back:{solarized_base3},bold',
+                'externalfilter': 'face:{sans},size:10,fore:{solarized_magenta},back:{solarized_base3},bold',
+                'userdefined': 'face:{sans},size:10,fore:{solarized_yellow},back:{solarized_base3},bold',
+                'unknownfunction': 'face:{sans},size:10,fore:{solarized_red},back:{solarized_base3},bold',
+                'parameter': 'face:{sans},size:10,fore:{solarized_base1},back:{solarized_base3}',
+                'datatype': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base3}',
+                'calltip': 'fore:{solarized_base00},back:{solarized_base2}',
+                'calltiphighlight': 'fore:{solarized_base21}',
+                'keyword': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base3},bold',
+                'miscword': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base3},bold',
+                'userslider': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base3}',
+                'cursor': 'fore:{solarized_base21}',
+                'bracelight': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base3},bold',
+                'badbrace': 'face:{sans},size:10,fore:{solarized_red},back:{solarized_base3},bold',
+                'highlight': 'fore:{solarized_base21},back:{solarized_base021}',             
+                'highlightline': 'back:{solarized_base2}',
+                'linenumber': 'face:{mono},fore:{solarized_base1},back:{solarized_base2}',
+                'foldmargin': 'fore:{solarized_base1},back:{solarized_base2}',
+                'scrapwindow': 'face:{mono},size:10,fore:{solarized_base01},back:{solarized_base2}',
+            },
+            _('Solarized dark'): {
+                'monospaced': 'face:{mono},size:10',
+                'default': 'face:{sans},size:10,fore:{solarized_base0},back:{solarized_base03}',
+                'comment': 'face:{serif},size:9,fore:{solarized_base01},back:{solarized_base03}',
+                'blockcomment': 'face:{serif},size:9,fore:{solarized_base01},back:{solarized_base03}',
+                'endcomment': 'face:{sans},size:10,fore:{solarized_base01},back:{solarized_base03}',
+                'number': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base03}',
+                'badnumber': 'face:{mono},size:10,fore:{solarized_red},back:{solarized_base03}',
+                'string': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base03}',
+                'stringtriple': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base03}',
+                'stringeol': 'face:{mono},size:10,fore:{solarized_cyan},back:{solarized_base02}',
+                'operator': 'face:{sans},size:10,fore:{solarized_base0},back:{solarized_base03},bold',
+                'assignment': 'face:{sans},size:10,fore:{solarized_base0},back:{solarized_base03},bold',
+                'clipproperty': 'face:{sans},size:10,fore:{solarized_blue},back:{solarized_base03},bold',
+                'internalfunction': 'face:{sans},size:10,fore:{solarized_blue},back:{solarized_base03},bold',
+                'internalfilter': 'face:{sans},size:10,fore:{solarized_violet},back:{solarized_base03},bold',
+                'externalfilter': 'face:{sans},size:10,fore:{solarized_magenta},back:{solarized_base03},bold',
+                'userdefined': 'face:{sans},size:10,fore:{solarized_yellow},back:{solarized_base03},bold',
+                'unknownfunction': 'face:{sans},size:10,fore:{solarized_red},back:{solarized_base03},bold',
+                'parameter': 'face:{sans},size:10,fore:{solarized_base01},back:{solarized_base03}',
+                'datatype': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base03}',
+                'calltip': 'fore:{solarized_base0},back:{solarized_base02}',
+                'calltiphighlight': 'fore:{solarized_base021}',
+                'keyword': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base03},bold',
+                'miscword': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base03},bold',
+                'userslider': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base03}',
+                'cursor': 'fore:{solarized_base021}',
+                'bracelight': 'face:{sans},size:10,fore:{solarized_green},back:{solarized_base03},bold',
+                'badbrace': 'face:{sans},size:10,fore:{solarized_red},back:{solarized_base03},bold',
+                'highlight': 'fore:{solarized_base021},back:{solarized_base21}',             
+                'highlightline': 'back:{solarized_base02}',
+                'linenumber': 'face:{mono},fore:{solarized_base01},back:{solarized_base02}',
+                'foldmargin': 'fore:{solarized_base01},back:{solarized_base02}',
+                'scrapwindow': 'face:{mono},size:10,fore:{solarized_base1},back:{solarized_base02}',
+            },
+            # Based on Zenburn <http://slinky.imukuppi.org/zenburnpage/>
+            _('Zenburn'): {
+                'monospaced': 'face:{mono},size:10',
+                'default': 'face:{sans},size:10,fore:{zenburn_normal_fore},back:{zenburn_normal_back}',
+                'comment': 'face:{serif},size:9,fore:{zenburn_comment},back:{zenburn_normal_back},italic',
+                'blockcomment': 'face:{serif},size:9,fore:{zenburn_comment},back:{zenburn_normal_back},italic',
+                'endcomment': 'face:{sans},size:10,fore:{zenburn_comment},back:{zenburn_normal_back}',
+                'number': 'face:{mono},size:10,fore:{zenburn_number},back:{zenburn_normal_back}',
+                'badnumber': 'face:{mono},size:10,fore:{zenburn_bad},back:{zenburn_normal_back}',
+                'string': 'face:{mono},size:10,fore:{zenburn_string},back:{zenburn_normal_back}',
+                'stringtriple': 'face:{mono},size:10,fore:{zenburn_string},back:{zenburn_normal_back}',
+                'stringeol': 'face:{mono},size:10,fore:{zenburn_stringeol_fore},back:{zenburn_stringeol_back}',
+                'operator': 'face:{sans},size:10,fore:{zenburn_operator},back:{zenburn_normal_back},bold',
+                'assignment': 'face:{sans},size:10,fore:{zenburn_normal_fore},back:{zenburn_normal_back},bold',
+                'clipproperty': 'face:{sans},size:10,fore:{zenburn_clipproperty},back:{zenburn_normal_back},bold',
+                'internalfunction': 'face:{sans},size:10,fore:{zenburn_internalfunction},back:{zenburn_normal_back},bold',
+                'internalfilter': 'face:{sans},size:10,fore:{zenburn_internalfilter},back:{zenburn_normal_back},bold',
+                'externalfilter': 'face:{sans},size:10,fore:{zenburn_externalfilter},back:{zenburn_normal_back},bold',
+                'userdefined': 'face:{sans},size:10,fore:{zenburn_userdefined},back:{zenburn_normal_back},bold',
+                'unknownfunction': 'face:{sans},size:10,fore:{zenburn_bad},back:{zenburn_normal_back},bold',
+                'parameter': 'face:{sans},size:10,fore:{zenburn_low_fore},back:{zenburn_normal_back}',
+                'datatype': 'face:{sans},size:10,fore:{zenburn_datatype},back:{zenburn_normal_back}',
+                'calltip': 'fore:{zenburn_low_fore},back:{zenburn_currentline_back}',
+                'calltiphighlight': 'fore:{zenburn_normal_fore}',
+                'keyword': 'face:{sans},size:10,fore:{zenburn_keyword},back:{zenburn_normal_back},bold',
+                'miscword': 'face:{sans},size:10,fore:{zenburn_keyword},back:{zenburn_normal_back},bold',
+                'userslider': 'face:{sans},size:10,fore:{zenburn_define},back:{zenburn_normal_back}',
+                'cursor': 'fore:{zenburn_cursor_back}',
+                'bracelight': 'face:{sans},size:10,fore:{zenburn_fold_fore},back:{zenburn_normal_back},bold',
+                'badbrace': 'face:{sans},size:10,fore:{zenburn_bad},back:{zenburn_normal_back},bold',
+                'highlight': 'fore:{zenburn_normal_fore},back:{zenburn_select_back}',             
+                'highlightline': 'back:{zenburn_currentline_back}',
+                'linenumber': 'face:{mono},fore:{zenburn_linenumber_fore},back:{zenburn_linenumber_back}',
+                'foldmargin': 'fore:{zenburn_fold_fore},back:{zenburn_fold_back}',
+                'scrapwindow': 'face:{mono},size:10,fore:{zenburn_normal_fore},back:{zenburn_currentline_back}',
+            },
         }
-        textstylesDict = self.defaulttextstylesDict.copy()
+        for values in self.defaulttextstylesDict.itervalues():
+            for key, value in values.items():
+                values[key] = value.format(**locals_dict)
+        textstylesDict = self.defaulttextstylesDict[_('Default')].copy()
         # Create the options dict
         self.options = global_vars.options
         self.options.update({
@@ -5755,6 +5992,7 @@ class MainFrame(wxp.Frame):
             'templates': templateDict,
             'snippets': snippetsDict,
             'textstyles': textstylesDict,
+            'theme_set_only_colors': True,
             #~ 'avskeywords': avsKeywords,
             #~ 'avsoperators': avsOperators,
             #~ 'avsdatatypes': avsDatatypes,
@@ -5789,6 +6027,7 @@ class MainFrame(wxp.Frame):
             'imagenameformat': '%s%06d',
             'imagesavedir': '',
             'useimagesavedir': True,
+            'colourdata': '1',
             'zoomindex': 2,
             'exitstatus': 0,
             'reservedshortcuts': ['Tab', 'Shift+Tab', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+X', 'Ctrl+C', 'Ctrl+V', 'Ctrl+A'],
@@ -5821,6 +6060,7 @@ class MainFrame(wxp.Frame):
             'autoparentheses': 1,
             'presetactivatekey': 'return',
             'wrap': False,
+            'highlight_fore': False,
             'highlightline': True,
             'usetabs': False,
             'tabwidth': 4,
@@ -5846,6 +6086,9 @@ class MainFrame(wxp.Frame):
             #~ 'showvideopixelinfo': True,
             #~ 'pixelcolorformat': 'hex',
             'videostatusbarinfo': None,
+            'use_customvideobackground': False,
+            'videobackground': (0, 0, 0),
+            'customvideobackground': (0, 0, 0),
             'errormessagefont': ('Arial', 24, '', '', (0, 0, 0)),
             'cropminx': 16,
             'cropminy': 16,
@@ -5928,7 +6171,10 @@ class MainFrame(wxp.Frame):
             pass
                 
         # check new key to make options.dat compatible for all 2.x version
-        self.options['textstyles']['foldmargin'] = self.options['textstyles']['foldmargin'].split(',')[-1]
+        if len(self.options['textstyles']['highlight'].split(':')) == 2:
+            self.options['textstyles']['highlight'] += ',fore:#000000'
+        if len(self.options['textstyles']['foldmargin'].split(':')) == 2:
+            self.options['textstyles']['foldmargin'] += ',fore:#555555'
         self.options['cropminx'] = self.options['cropminy'] = 1
         self.options['loadstartupbookmarks'] = True
         if oldOptions and 'autocompleteexclusions' in oldOptions:
@@ -7199,6 +7445,14 @@ class MainFrame(wxp.Frame):
             _('Vertically'): 'flipvertical',
             _('Horizontally'): 'fliphorizontal',
         }
+        self.backgroundLabelDict = {
+            _('Black'): (0, 0, 0),
+            _('Dark grey'): (63, 63, 63),
+            _('Medium grey'): (127, 127, 127),
+            _('Light grey'): (191, 191, 191),
+            _('White'): (255, 255, 255),
+        }
+        self.backgroundColorDict = dict([(v,k) for k,v in self.backgroundLabelDict.items()])
         return (
             (_('&File'),
                 (_('New tab'), 'Ctrl+N', self.OnMenuFileNew, _('Create a new tab')),
@@ -7433,6 +7687,19 @@ class MainFrame(wxp.Frame):
                     (_('High quality YUV to RGB conversion'), '', self.OnMenuVideoBitDepth, _('Convert high-bitdepth YUV to 8-bit RGB in one step. Requires Dither to be loaded.'), wx.ITEM_RADIO, False),
                     (_('Dither to 8-bit YUV'), '', self.OnMenuVideoBitDepth, _('Dither high-bitdepth YUV to 8-bit YUV using Floyd-Steinberg error diffusion. Requires either f3kdb or Dither to be loaded.'), wx.ITEM_RADIO, True),
                     (_('Clip to 8-bit YUV'), '', self.OnMenuVideoBitDepth, _('Only keeps the 8 MSBs and throws the rest away. Fast but very inaccurate.'), wx.ITEM_RADIO, False),
+                    ),
+                ),
+                (_('Background &color'),
+                    (
+                    (_('Default'), '', self.OnMenuVideoBackgroundColor, _("Follow current theme"), wx.ITEM_RADIO, True),
+                    (_('Black'), '', self.OnMenuVideoBackgroundColor, _('Use RGB {hex_value}').format(hex_value='#000000'), wx.ITEM_RADIO, False),
+                    (_('Dark grey'), '', self.OnMenuVideoBackgroundColor, _('Use RGB {hex_value}').format(hex_value='#3F3F3F'), wx.ITEM_RADIO, False),
+                    (_('Medium grey'), '', self.OnMenuVideoBackgroundColor, _('Use RGB {hex_value}').format(hex_value='#7F7F7F'), wx.ITEM_RADIO, False),
+                    (_('Light grey'), '', self.OnMenuVideoBackgroundColor, _('Use RGB {hex_value}').format(hex_value='#BFBFBF'), wx.ITEM_RADIO, False),
+                    (_('White'), '', self.OnMenuVideoBackgroundColor, _('Use RGB {hex_value}').format(hex_value='#FFFFFF'), wx.ITEM_RADIO, False),
+                    (_('Custom'), '', self.OnMenuVideoBackgroundColor, _('Use a custom color'), wx.ITEM_RADIO, False),
+                    (''),
+                    (_('Select custom color'), '', self.OnMenuVideoSetCustomBackgroundColor, _("Choose the color used if 'custom' is selected")),
                     ),
                 ),
                 (_('Keep variables on refreshing'), '', self.OnMenuVideoReuseEnvironment, _('Create the new AviSynth clip on the same environment. Useful for tweaking parameters'), wx.ITEM_CHECK, False),
@@ -9305,6 +9572,56 @@ class MainFrame(wxp.Frame):
             return
         menuItem.Check()
     
+    def OnMenuVideoBackgroundColor(self, event=None, color=None, label=None):
+        vidmenus = [self.videoWindow.contextMenu, self.GetMenuBar().GetMenu(2)]
+        if event is not None:
+            id = event.GetId()
+            label = None
+        elif color is not None:
+            label = self.backgroundColorDict.get(color, _('Custom'))
+        elif label is None:
+            print>>sys.stderr, _('Error'), 'OnMenuVideoBackgroundColor(): a color or menuItem label is needed'
+        updateMenu = None
+        for vidmenu in vidmenus:
+            menu = vidmenu.FindItemById(vidmenu.FindItem(_('Background &color'))).GetSubMenu()
+            if label:
+                id = menu.FindItem(label)
+            menuItem = menu.FindItemById(id)
+            if menuItem:
+                menuItem.Check()
+                label = menuItem.GetLabel()
+                if label == _('Default'):
+                    self.options['use_customvideobackground'] = False
+                else:
+                    self.options['use_customvideobackground'] = True
+                    self.options['videobackground'] = self.backgroundLabelDict.get(
+                        label, self.options['customvideobackground'])
+                self.OnEraseBackground()
+            else:
+                updateMenu = menu
+        if updateMenu is None:
+            return
+        id = updateMenu.FindItem(label)
+        menuItem = updateMenu.FindItemById(id)
+        if not menuItem:
+            print>>sys.stderr, _('Error'), 'OnMenuVideoBackgroundColor(): cannot find menu item by id'
+            return
+        menuItem.Check()
+    
+    def OnMenuVideoSetCustomBackgroundColor(self, event):
+        self.colour_data.SetColour(self.options['customvideobackground'])
+        dialog = wx.ColourDialog(self, self.colour_data)
+        if dialog.ShowModal() == wx.ID_OK:
+            data = dialog.GetColourData()
+            self.options['customvideobackground'] = data.GetColour()
+            self.OnMenuVideoBackgroundColor(label=_('Custom'))
+            for i in range(self.colour_data.NUM_CUSTOM):
+                self.colour_data.SetCustomColour(i, data.GetCustomColour(i))
+            self.options['colourdata'] = self.colour_data.ToString()
+            with open(self.optionsfilename, mode='wb') as f:
+                cPickle.dump(self.options, f, protocol=0)
+        dialog.Destroy()
+    
     def OnMenuVideoReuseEnvironment(self, event):
         self.reuse_environment = not self.reuse_environment
     
@@ -9566,7 +9883,7 @@ class MainFrame(wxp.Frame):
         dlgInfo = (
             (_('Basic (1)'),
                 (
-                    (_('Monospaced font:'), 'monospaced'),
+                    ((_('Use monospaced font:'), 'usemonospacedfont', _('Override all fonts to use a specified monospace font (no effect on scrap window)')), 'monospaced'),
                     (_('Default:'), 'default'),
                     (_('Comment:'), 'comment'),
                     (_('Block Comment:'), 'blockcomment'),
@@ -9603,29 +9920,27 @@ class MainFrame(wxp.Frame):
                     (_('Calltip:'), 'calltip'),
                     (_('Calltip highlight:'), 'calltiphighlight'),
                     (_('Cursor:'), 'cursor'),
-                    (_('Selection highlight:'), 'highlight'),
+                    ((_('Selection highlight:'), 'highlight_fore', _('If checked, highlight also foreground')), 'highlight'),
                     ((_('Current line highlight:'), 'highlightline', _('Highlight the line that the caret is currently in')), 'highlightline'),
                     (_('Fold margin:'), 'foldmargin'),
                     (_('Scrap window'), 'scrapwindow'),
                 ),
             )
         )
-        extra = (_('Use monospaced font'), 'usemonospacedfont', _('Override all fonts to use a specified monospace font(no effect on scrap window)'))
-        dlg = AvsStyleDialog(self, dlgInfo, self.options['textstyles'], self.defaulttextstylesDict, extra)
+        extra = None # adds a single CheckBox, (label, options_dict_key, tooltip)
+        dlg = AvsStyleDialog(self, dlgInfo, self.options['textstyles'], self.defaulttextstylesDict, self.colour_data, extra)
         ID = dlg.ShowModal()
         if ID == wx.ID_OK:
             self.options['textstyles'] = dlg.GetDict()
             self.options.update(dlg.GetDict2())
+            self.options['colourdata'] = self.colour_data.ToString()
             with open(self.optionsfilename, mode='wb') as f:
                 cPickle.dump(self.options, f, protocol=0)
             for index in xrange(self.scriptNotebook.GetPageCount()):
                 script = self.scriptNotebook.GetPage(index)
                 script.SetUserOptions()
             self.SetMinimumScriptPaneSize()
-            textCtrl = self.scrapWindow.textCtrl
-            textCtrl.StyleSetSpec(stc.STC_STYLE_DEFAULT, self.options['textstyles']['scrapwindow'])
-            textCtrl.StyleClearAll()
-            textCtrl.StyleSetSpec(stc.STC_P_WORD, "fore:#FF0000,bold")
+            self.scrapWindow.Style()
         dlg.Destroy()
 
     def OnMenuOptionsTemplates(self, event):
@@ -11429,15 +11744,20 @@ class MainFrame(wxp.Frame):
             script = self.currentScript
             self.PaintAVIFrame(dc, script, self.currentframenum, isPaintEvent=True)
     
-    def OnEraseBackground(self, event):
-        dc = event.GetDC()
+    def OnEraseBackground(self, event=None):
+        if event is not None:
+            dc = event.GetDC()
+        else:
+            dc = wx.ClientDC(self.videoWindow)
         if dc is not None:
             script = self.currentScript
             if script.AVI is not None:
-                try: # using a custom handler for EVT_ERASE_BACKGROUND causes the 
-                     # background to lose the theme's color on Windows
-                    dc.SetBackground(wx.Brush(self.videoWindow.GetBackgroundColour()))
-                except: pass
+                if self.options['use_customvideobackground']:
+                    background_color = self.options['videobackground']
+                else: # using a custom handler for EVT_ERASE_BACKGROUND causes 
+                      # the background to lose the theme's color on Windows
+                    background_color = self.videoWindow.GetBackgroundColour()
+                dc.SetBackground(wx.Brush(background_color))
                 w_dc, h_dc = dc.GetSize()
                 w_scrolled, h_scrolled = self.videoWindow.GetVirtualSize()
                 x0, y0 = self.videoWindow.GetViewStart()
@@ -11466,7 +11786,8 @@ class MainFrame(wxp.Frame):
                     dc.Clear()
                     dc.DestroyClippingRegion()
                 return
-        event.Skip()
+        if event is not None:
+            event.Skip()
     
     def OnZoomInOut(self, event):
         id = event.GetId()
@@ -16231,8 +16552,11 @@ class MainFrame(wxp.Frame):
             b = int(value[4:6],16)
         except:
             r=g=b=0
-        colorButton = colourselect.ColourSelect(parent, wx.ID_ANY, colour=wx.Colour(r,g,b), size=(50,23))
+        colorButton = wxp.ColourSelect(parent, wx.ID_ANY, colour=wx.Colour(r,g,b), size=(50,23), colour_data=self.colour_data)
         def OnSelectColour(event):
+            self.options['colourdata'] = self.colour_data.ToString()
+            with open(self.optionsfilename, mode='wb') as f:
+                cPickle.dump(self.options, f, protocol=0)
             strColor = '$%02x%02x%02x' % colorButton.GetColour().Get()
             self.SetNewAvsValue(colorButton, strColor.upper())
         colorButton.Bind(colourselect.EVT_COLOURSELECT, OnSelectColour)
@@ -16693,12 +17017,15 @@ class MainFrame(wxp.Frame):
             old_plugins_directory = self.ExpandVars(self.options['pluginsdir'])
             old_prefer_functions = self.options['syntaxhighlight_preferfunctions']
             old_style_triple_quotes = self.options['syntaxhighlight_styleinsidetriplequotes']
+            old_use_custom_video_background = self.options['use_customvideobackground']
+            old_custom_video_background = self.options['customvideobackground']
             self.options.update(dlg.GetDict())
             if self.options['pluginsdir'] != old_plugins_directory:
                 self.SetPluginsDirectory(old_plugins_directory)
             for key in ['altdir', 'workdir', 'pluginsdir', 'avisynthhelpfile', 
                         'externalplayer', 'docsearchpaths']:
                 self.options[key] = self.ExpandVars(self.options[key], False, '%' + key + '%')
+            self.options['colourdata'] = self.colour_data.ToString()
             with open(self.optionsfilename, mode='wb') as f:
                 cPickle.dump(self.options, f, protocol=0)
             if self.options['useworkdir'] and self.options['workdir']:
@@ -16730,6 +17057,10 @@ class MainFrame(wxp.Frame):
                 self.backupTimer.Start(self.options['periodicbackup'] * 60000)
             elif self.backupTimer.IsRunning():
                 self.backupTimer.Stop()
+            if (old_use_custom_video_background != self.options['use_customvideobackground'] or 
+                self.options['use_customvideobackground'] and
+                old_custom_video_background != self.options['customvideobackground']):
+                    self.OnEraseBackground()
         dlg.Destroy()
     
     def SetPluginsDirectory(self, oldpluginsdirectory):
